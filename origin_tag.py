@@ -82,8 +82,12 @@ def query_eki(lemma):
 def query_wiktionary(lemma):
     try:
         url = "https://et.wiktionary.org/w/api.php"
+        headers = {
+            "User-Agent": "EstonianOriginTagger/1.0 (Educational/Research Tool)"
+        }
         r = requests.get(url, params={"action":"query","prop":"extracts","explaintext":1,
-                                      "titles":lemma,"format":"json"}, timeout=8)
+                                      "titles":lemma,"format":"json"},
+                        headers=headers, timeout=8)
         pages = r.json().get("query", {}).get("pages", {})
         text = next(iter(pages.values())).get("extract","")
         m = re.search(r"(?s)^Etümoloogia\s*(.+?)(?:^\w|\Z)", text, flags=re.MULTILINE)
