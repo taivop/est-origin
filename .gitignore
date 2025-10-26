@@ -20,6 +20,10 @@ env/
 # IDE
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
 *~
+
+# Test scripts
+test_*.py
