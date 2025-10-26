@@ -1,0 +1,24 @@
+# Cache files
+.cache_origin.sqlite3
+.cache_origin.sqlite3-journal
+
+# Output files
+*.jsonl
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.venv
+.uv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
