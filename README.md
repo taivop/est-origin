@@ -103,10 +103,50 @@ Tere, see on lihtne eesti lause.
 - Wiktionary data: CC-BY-SA 3.0
 - Software: MIT License
 
+## Getting Started
+
+### 1. Populate the lexicon cache
+
+Since external API access may be restricted, populate the cache with sample data:
+
+```bash
+python3 add_sample_lexicon.py
+```
+
+This adds etymological data for common words to the local SQLite cache.
+
+### 2. Run the tagger
+
+```bash
+uv run origin_tag.py --in example_input.txt --out output.jsonl --offline
+python3 format_output.py output.jsonl
+```
+
+Example output:
+```
+TOKEN           | LEMMA           | POS  | ORIGIN               | CONF  | SOURCE
+ma              | mina            | P    | native_finnic        | 0.9   | manual
+käisin          | käima           | V    | native_finnic        | 0.9   | manual
+lasteaias       | lasteaed        | S    | loan:german          | 0.9   | manual
+toddler'il      | toddler         | S    | loan:english         | 0.9   | manual
+peeglist        | peegel          | S    | loan:german          | 0.9   | manual
+siluetti        | siluett         | S    | loan:french          | 0.9   | manual
+```
+
+## Known Limitations
+
+- **Wiktionary API**: Currently blocked in some environments (403 Access Denied)
+- **EKI API**: Not yet implemented (placeholder only)
+- **Coverage**: Only words in cache have known origins; others show as "unknown"
+
 ## Testing
 
-Test with the included sample:
+Test with the included samples:
 ```bash
+# Basic test
 uv run origin_tag.py --in test_input.txt --out output.jsonl
-cat output.jsonl
+
+# Example with multiple word origins
+uv run origin_tag.py --in example_input.txt --out output.jsonl --offline
+python3 format_output.py output.jsonl
 ```
