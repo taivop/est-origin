@@ -4,6 +4,7 @@
 
 # Output files
 *.jsonl
+*.html
 
 # Python
 __pycache__/
