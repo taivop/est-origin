@@ -81,45 +81,108 @@ def query_eki(lemma, api_key=None):
         return None
 
     try:
-        # Try Ekilex API endpoint
-        url = "https://ekilex.ee/api/etymology"
+        # Step 1: Search for the word to get wordId
+        search_url = f"https://ekilex.ee/api/word/search/{lemma}"
         headers = {
-            "Authorization": f"Bearer {api_key}",
+            "ekilex-api-key": api_key,
             "User-Agent": "EstonianOriginTagger/1.0",
             "Accept": "application/json"
         }
 
-        r = requests.get(url, params={"word": lemma}, headers=headers, timeout=8)
+        r = requests.get(search_url, headers=headers, timeout=8)
 
-        if r.status_code == 200:
-            data = r.json()
-            # Parse EKI response - structure may vary
-            if data and "etymology" in data:
-                ety_text = data["etymology"]
-                norm = normalize_origin(ety_text)
-                if norm:
-                    return {"origin": norm, "evidence_text": ety_text, "source": "EKI"}
+        if r.status_code != 200:
+            return None
 
-        # Alternative: try Sõnaveeb API
-        alt_url = "https://sonaveeb.ee/api/public/v1/word-search"
-        r2 = requests.get(alt_url, params={
-            "word": lemma,
-            "datasets": "ety",
-            "lang": "est"
-        }, headers=headers, timeout=8)
+        search_data = r.json()
+        if not search_data or "words" not in search_data:
+            return None
 
-        if r2.status_code == 200:
-            data = r2.json()
-            # Parse Sõnaveeb response
-            if data and isinstance(data, dict):
-                # Extract etymology information from response
-                if "words" in data and data["words"]:
-                    for word_entry in data["words"]:
-                        if "etymology" in word_entry:
-                            ety_text = word_entry["etymology"]
-                            norm = normalize_origin(str(ety_text))
-                            if norm:
-                                return {"origin": norm, "evidence_text": str(ety_text), "source": "EKI"}
+        # Find first Estonian word with etymology dataset
+        word_id = None
+        for word_entry in search_data.get("words", []):
+            if word_entry.get("lang") == "est" and "ety" in word_entry.get("datasetCodes", []):
+                word_id = word_entry.get("wordId")
+                break
+
+        # If no word with etymology found, try first Estonian word
+        if not word_id:
+            for word_entry in search_data.get("words", []):
+                if word_entry.get("lang") == "est":
+                    word_id = word_entry.get("wordId")
+                    break
+
+        if not word_id:
+            return None
+
+        # Step 2: Get detailed word information
+        details_url = f"https://ekilex.ee/api/word/details/{word_id}"
+        r2 = requests.get(details_url, headers=headers, timeout=8)
+
+        if r2.status_code != 200:
+            return None
+
+        details_data = r2.json()
+        word_data = details_data.get("word", {})
+        etymology_list = word_data.get("etymology", [])
+
+        if not etymology_list:
+            return None
+
+        # Step 3: Parse etymology information
+        for etym in etymology_list:
+            etym_type = etym.get("etymologyTypeCode", "")
+
+            # Check if it's a native word
+            if etym_type == "põlissõna":
+                return {
+                    "origin": "native_finnic",
+                    "evidence_text": "Soome-ugri põlissõna",
+                    "source": "EKI"
+                }
+
+            # Check if it's a loanword
+            elif etym_type == "laensõna":
+                # Try to determine source language from relations
+                relations = etym.get("wordEtymRelations", [])
+                if relations:
+                    for rel in relations:
+                        source_lang = rel.get("relatedWordLang", "")
+                        comment = rel.get("commentPrese", "")
+
+                        # Map language codes to our origin tags
+                        lang_mapping = {
+                            "deu": "loan:german",
+                            "ger": "loan:german",
+                            "gml": "loan:low_german",
+                            "swe": "loan:swedish",
+                            "rus": "loan:russian",
+                            "lat": "loan:latin",
+                            "fra": "loan:french",
+                            "fre": "loan:french",
+                            "eng": "loan:english",
+                            "lav": "loan:latvian",
+                            "lit": "loan:lithuanian",
+                            "fin": "loan:finnish",
+                        }
+
+                        origin = lang_mapping.get(source_lang)
+                        if origin:
+                            evidence = f"Laensõna {source_lang} keelest"
+                            if comment:
+                                evidence += f": {comment}"
+                            return {
+                                "origin": origin,
+                                "evidence_text": evidence,
+                                "source": "EKI"
+                            }
+
+                # If we can't determine specific language, mark as generic loan
+                return {
+                    "origin": "unknown",
+                    "evidence_text": "Laensõna (allikas määramata)",
+                    "source": "EKI"
+                }
 
     except Exception as e:
         # Silently fail and fallback to Wiktionary
