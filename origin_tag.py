@@ -20,7 +20,7 @@ Options:
     --min-conf 0.5    Filter low-confidence results
 """
 
-import argparse, json, re, sqlite3, time
+import argparse, json, re, sqlite3, time, os
 from pathlib import Path
 from estnltk import Text
 import requests
@@ -75,8 +75,56 @@ def normalize_origin(raw_text):
         return "native_finnic"
     return None
 
-def query_eki(lemma):
-    # Placeholder: implement Ekilex/Sõnaveeb API query here
+def query_eki(lemma, api_key=None):
+    """Query EKI/Ekilex API for etymological information."""
+    if not api_key:
+        return None
+
+    try:
+        # Try Ekilex API endpoint
+        url = "https://ekilex.ee/api/etymology"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "User-Agent": "EstonianOriginTagger/1.0",
+            "Accept": "application/json"
+        }
+
+        r = requests.get(url, params={"word": lemma}, headers=headers, timeout=8)
+
+        if r.status_code == 200:
+            data = r.json()
+            # Parse EKI response - structure may vary
+            if data and "etymology" in data:
+                ety_text = data["etymology"]
+                norm = normalize_origin(ety_text)
+                if norm:
+                    return {"origin": norm, "evidence_text": ety_text, "source": "EKI"}
+
+        # Alternative: try Sõnaveeb API
+        alt_url = "https://sonaveeb.ee/api/public/v1/word-search"
+        r2 = requests.get(alt_url, params={
+            "word": lemma,
+            "datasets": "ety",
+            "lang": "est"
+        }, headers=headers, timeout=8)
+
+        if r2.status_code == 200:
+            data = r2.json()
+            # Parse Sõnaveeb response
+            if data and isinstance(data, dict):
+                # Extract etymology information from response
+                if "words" in data and data["words"]:
+                    for word_entry in data["words"]:
+                        if "etymology" in word_entry:
+                            ety_text = word_entry["etymology"]
+                            norm = normalize_origin(str(ety_text))
+                            if norm:
+                                return {"origin": norm, "evidence_text": str(ety_text), "source": "EKI"}
+
+    except Exception as e:
+        # Silently fail and fallback to Wiktionary
+        pass
+
     return None
 
 def query_wiktionary(lemma):
@@ -100,7 +148,7 @@ def query_wiktionary(lemma):
         pass
     return None
 
-def analyze_text(txt, offline=False, allow_compounds=True, min_conf=0.0):
+def analyze_text(txt, offline=False, allow_compounds=True, min_conf=0.0, api_key=None):
     con = init_db()
     doc = Text(txt); doc.tag_layer(['morph_analysis'])
     out = []
@@ -122,7 +170,7 @@ def analyze_text(txt, offline=False, allow_compounds=True, min_conf=0.0):
         else:
             origin=source=ev=None; conf=0.0
             if not offline:
-                r = query_eki(lemma) or query_wiktionary(lemma)
+                r = query_eki(lemma, api_key) or query_wiktionary(lemma)
                 if r:
                     origin, ev, source, conf = r["origin"], r["evidence_text"], r["source"], 0.9 if source=="EKI" else 0.6
                     db_put(con, lemma, origin, source, ev)
@@ -145,12 +193,17 @@ def main():
     ap.add_argument("--offline", action="store_true")
     ap.add_argument("--no-compounds", action="store_true")
     ap.add_argument("--min-conf", type=float, default=0.0)
+    ap.add_argument("--api-key", dest="api_key", help="EKI/Ekilex API key (or set EKI_API_KEY env var)")
     args = ap.parse_args()
+
+    # Get API key from argument or environment variable
+    api_key = args.api_key or os.environ.get("EKI_API_KEY")
 
     text = Path(args.inp).read_text(encoding="utf-8")
     results = analyze_text(text, offline=args.offline,
                            allow_compounds=not args.no_compounds,
-                           min_conf=args.min_conf)
+                           min_conf=args.min_conf,
+                           api_key=api_key)
     with open(args.outp, "w", encoding="utf-8") as f:
         for row in results:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
