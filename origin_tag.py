@@ -193,11 +193,11 @@ def main():
     ap.add_argument("--offline", action="store_true")
     ap.add_argument("--no-compounds", action="store_true")
     ap.add_argument("--min-conf", type=float, default=0.0)
-    ap.add_argument("--api-key", dest="api_key", help="EKI/Ekilex API key (or set EKI_API_KEY env var)")
+    ap.add_argument("--api-key", dest="api_key", help="EKI/Ekilex API key (or set ESTLEX_API_KEY env var)")
     args = ap.parse_args()
 
     # Get API key from argument or environment variable
-    api_key = args.api_key or os.environ.get("EKI_API_KEY")
+    api_key = args.api_key or os.environ.get("ESTLEX_API_KEY")
 
     text = Path(args.inp).read_text(encoding="utf-8")
     results = analyze_text(text, offline=args.offline,
